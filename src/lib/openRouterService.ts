@@ -40,10 +40,18 @@ Votre réponse finale doit être fournie exclusivement sous la forme d'un tablea
 N'ajoutez aucun autre texte ni commentaire en dehors du tableau JSON fourni.
 `;
 
+// Nouvelle interface pour le type de retour
+interface GenerationResult {
+  testCases: TestCase[] | null;
+  rawResponse: string | null;
+  error?: string;
+}
+
 export async function generateTestCases(
   userStory: string,
-  additionalContext: string
-): Promise<TestCase[]> {
+  additionalContext?: string // Paramètre rendu optionnel précédemment
+): Promise<GenerationResult> { // Mettre à jour le type de retour de la Promise
+  let rawContent = ''; // Variable pour stocker la réponse brute
   try {
     const prompt = `
 User Story:
@@ -63,7 +71,7 @@ En fonction de cette histoire utilisateur, générez des cas de test détaillés
         "X-Title": "TestCase Generator"
       },
       body: JSON.stringify({
-        model: "qwen/qwen3-30b-a3b:free", // Using a reliable free model
+        model: "meta-llama/llama-4-maverick:free",
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
           { role: "user", content: prompt }
@@ -76,51 +84,68 @@ En fonction de cette histoire utilisateur, générez des cas de test détaillés
     const data = await response.json();
 
     if (!response.ok) {
-      throw new Error('Échec de la génération des cas de test');
+      // Essayer d'obtenir plus de détails sur l'erreur de l'API si possible
+      const errorDetails = data?.error?.message || 'Échec de la requête API';
+      throw new Error(`Échec de la génération des cas de test: ${errorDetails}`);
     }
 
-    // Get the completion content
-    const content = data.choices[0].message.content;
-    console.log("AI response content:", content);
+    if (!data.choices || data.choices.length === 0 || !data.choices[0].message?.content) {
+      throw new Error('Réponse invalide ou vide reçue de l\'API.');
+    }
+
+    // Get the completion content and store it
+    rawContent = data.choices[0].message.content;
+    console.log("AI response content:", rawContent);
 
     // Declare variables outside the inner try block
     let jsonStartIndex = -1;
     let jsonEndIndex = 0;
 
-    // Extract JSON from content - more robust approach to handle potential text before or after JSON
+    // Extract JSON from content
     try {
-      // Look for array pattern
-      // Assign values to the declared variables (remove const)
-      jsonStartIndex = content.indexOf('[');
-      jsonEndIndex = content.lastIndexOf(']') + 1;
+      jsonStartIndex = rawContent.indexOf('[');
+      jsonEndIndex = rawContent.lastIndexOf(']') + 1;
 
       if (jsonStartIndex === -1 || jsonEndIndex === 0) {
+        // Si aucun tableau n'est trouvé, peut-être que la réponse est un objet JSON unique ou une erreur formatée différemment
+        // Tentative de parser directement comme objet si ce n'est pas un tableau
+        if (rawContent.trim().startsWith('{') && rawContent.trim().endsWith('}')) {
+          const testCaseObject = JSON.parse(rawContent.trim());
+          // Si c'est un objet valide mais pas le format attendu (tableau), retourner une erreur spécifique
+          // Ou si le format attendu peut être un objet unique, ajuster ici
+          console.warn("Réponse reçue sous forme d'objet JSON unique, attendu un tableau.");
+          // Pour l'instant, on considère cela comme une erreur de format
+          throw new Error('Format de réponse inattendu: objet JSON reçu au lieu d\'un tableau.');
+        }
         throw new Error('Aucun tableau JSON trouvé dans la réponse');
       }
 
-      // Extract the potential JSON string
-      let jsonString = content.substring(jsonStartIndex, jsonEndIndex);
-      console.log("Extracted JSON string (before trim):", jsonString);
-
-      // Trim whitespace before parsing
+      let jsonString = rawContent.substring(jsonStartIndex, jsonEndIndex);
       jsonString = jsonString.trim();
-      console.log("Extracted JSON string (after trim):", jsonString);
 
       const testCases: TestCase[] = JSON.parse(jsonString);
-      return testCases;
+      // Succès du parsing
+      return { testCases, rawResponse: rawContent, error: undefined };
+
     } catch (jsonError) {
       console.error("Erreur d'analyse JSON:", jsonError);
-      // Log the problematic string for debugging - now variables are accessible
-      // Check if indices were found before trying to substring
-      if (jsonStartIndex !== -1 && jsonEndIndex !== 0) {
-        console.error("Chaîne JSON ayant échoué au parsing:", content.substring(jsonStartIndex, jsonEndIndex));
-      } else {
-        console.error("Impossible d'extraire la chaîne JSON, indices non valides.");
+      let errorMsg = 'Format de réponse invalide. Impossible de parser le JSON.';
+      if (jsonError instanceof Error) {
+        errorMsg += ` Détail: ${jsonError.message}`;
       }
-      throw new Error('Format de réponse invalide. Impossible de parser le JSON.');
+      // Log the problematic string for debugging
+      if (jsonStartIndex !== -1 && jsonEndIndex !== 0) {
+        console.error("Chaîne JSON ayant échoué au parsing:", rawContent.substring(jsonStartIndex, jsonEndIndex));
+      } else {
+        console.error("Impossible d'extraire la chaîne JSON, indices non valides. Réponse brute:", rawContent);
+      }
+      // Retourner l'erreur et la réponse brute
+      return { testCases: null, rawResponse: rawContent, error: errorMsg };
     }
   } catch (error) {
     console.error("Erreur lors de la génération des cas de test:", error);
-    throw error;
+    const errorMessage = error instanceof Error ? error.message : "Une erreur inconnue est survenue";
+    // Retourner l'erreur et la réponse brute si disponible
+    return { testCases: null, rawResponse: rawContent || null, error: errorMessage };
   }
 }

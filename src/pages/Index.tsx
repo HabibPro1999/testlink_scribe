@@ -6,28 +6,44 @@ import UserStoryForm from '@/components/UserStoryForm';
 import TestCaseResults from '@/components/TestCaseResults';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
+import { Textarea } from '@/components/ui/textarea'; // Assurez-vous d'importer Textarea
 
 const Index = () => {
   const [testCases, setTestCases] = useState<TestCase[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [rawResponse, setRawResponse] = useState<string | null>(null); // Nouvel état
 
   const handleSubmit = async (data: UserStoryInput) => {
     setError(null);
+    setRawResponse(null); // Réinitialiser la réponse brute
     setLoading(true);
+    setTestCases([]); // Réinitialiser les cas de test précédents
 
     try {
-      const generatedTestCases = await generateTestCases(data.userStory, data.additionalContext);
-      setTestCases(generatedTestCases);
-      
-      toast.success("Cas de test générés avec succès!");
+      // Appeler la fonction mise à jour
+      const result = await generateTestCases(data.userStory);
+
+      if (result.error) {
+        // Si une erreur est retournée (y compris erreur de parsing)
+        setError(result.error);
+        setRawResponse(result.rawResponse); // Stocker la réponse brute
+        toast.error(result.error || "Échec de la génération des cas de test");
+      } else if (result.testCases) {
+        // Si succès
+        setTestCases(result.testCases);
+        toast.success("Cas de test générés avec succès!");
+      } else {
+        // Cas improbable où ni erreur ni testCases ne sont présents
+        throw new Error("Réponse inattendue du service de génération.");
+      }
+
     } catch (err) {
-      console.error("Erreur lors de la génération des cas de test:", err);
-      
-      const errorMessage = "Échec de la génération des cas de test. Veuillez vérifier votre clé API et réessayer.";
-        
-      setError(err instanceof Error ? err.message : errorMessage);
-      toast.error("Échec de la génération des cas de test");
+      // Gérer les erreurs inattendues (ex: problème réseau non intercepté dans le service)
+      console.error("Erreur lors de la soumission:", err);
+      const errorMessage = err instanceof Error ? err.message : "Une erreur inconnue est survenue lors de la communication avec le service.";
+      setError(errorMessage);
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -35,6 +51,8 @@ const Index = () => {
 
   const handleReset = () => {
     setTestCases([]);
+    setError(null);
+    setRawResponse(null); // Réinitialiser aussi la réponse brute
   };
 
   return (
@@ -64,12 +82,35 @@ const Index = () => {
                   <li>Téléchargez le fichier XML pour l'importation dans TestLink</li>
                 </ol>
               </div>
-              
-              <UserStoryForm 
-                onSubmit={handleSubmit} 
-                isLoading={loading} 
-                error={error}
+
+              <UserStoryForm
+                onSubmit={handleSubmit}
+                isLoading={loading}
+                error={error} // Passer l'erreur au formulaire si nécessaire
               />
+
+              {/* Afficher la zone de texte avec la réponse brute si elle existe */}
+              {rawResponse && (
+                <div className="mt-6 w-full">
+                  <h3 className="text-lg font-semibold mb-2 text-red-600">
+                    Réponse Brute du Modèle (pour débogage) :
+                  </h3>
+                  <Textarea
+                    readOnly
+                    value={rawResponse}
+                    className="w-full h-64 font-mono text-sm bg-gray-100"
+                    placeholder="Réponse brute de l'API..."
+                  />
+                </div>
+              )}
+
+              {/* Afficher le message d'erreur général s'il y en a un et qu'il n'y a pas de réponse brute (ou en complément) */}
+              {error && !rawResponse && (
+                <div className="mt-4 text-red-600 text-center">
+                  Erreur: {error}
+                </div>
+              )}
+
             </div>
           </div>
         ) : (

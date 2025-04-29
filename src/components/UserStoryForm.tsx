@@ -22,12 +22,12 @@ const UserStoryForm: React.FC<Props> = ({ onSubmit, isLoading, error }) => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     // Save API key to local storage
     if (apiKey) {
       localStorage.setItem("openRouterApiKey", apiKey);
     }
-    
+
     onSubmit({
       userStory,
       additionalContext
@@ -57,20 +57,6 @@ const UserStoryForm: React.FC<Props> = ({ onSubmit, isLoading, error }) => {
               onChange={(e) => setUserStory(e.target.value)}
               rows={5}
               required
-              className="resize-y"
-            />
-          </div>
-          
-          <div className="space-y-2">
-            <Label htmlFor="context">
-              Contexte Additionnel (optionnel)
-            </Label>
-            <Textarea
-              id="context"
-              placeholder="Entrez toute information supplémentaire qui pourrait aider à générer de meilleurs cas de test..."
-              value={additionalContext}
-              onChange={(e) => setAdditionalContext(e.target.value)}
-              rows={3}
               className="resize-y"
             />
           </div>
@@ -109,8 +95,8 @@ const UserStoryForm: React.FC<Props> = ({ onSubmit, isLoading, error }) => {
         </CardContent>
         <CardFooter>
           <Button type="submit" className="w-full" disabled={isLoading}>
-            {isLoading 
-              ? "Génération des cas de test..." 
+            {isLoading
+              ? "Génération des cas de test..."
               : "Générer des cas de test"}
           </Button>
         </CardFooter>
